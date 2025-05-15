@@ -5,19 +5,24 @@ from PySide6.QtWidgets import QLabel, QMessageBox
 from PySide6.QtGui import QPixmap, QImage, QPainter, QColor
 from PySide6.QtCore import Qt, QPoint, QSize
 
+from src.utils import FrameMasks
 
 class MaskPainter(QLabel):
-    def __init__(self, image_path):
+    def __init__(self):
         super().__init__()
 
         # Load the base image in RGB
-        self.image = cv2.cvtColor(cv2.imread(image_path), cv2.COLOR_BGR2RGB)
-        if self.image is None:
-            raise FileNotFoundError(f"Image not found: {image_path}")
+        self.image = np.zeros((512, 512, 3), dtype=np.uint8)
+        self.masks = FrameMasks()
 
         self.labels = {}
-        self.label_colors = {}
-        self.active_label = None
+        self.label_colors = {
+            "Polyp": QColor(255, 0, 0, 120),
+            "Shaft": QColor(0, 255, 0, 120),
+            "Wire": QColor(0, 0, 255, 120)
+        }
+
+        self.active_label = "Polyp"
 
         self.pen_size = 5
         self.eraser_size = 20
@@ -41,21 +46,37 @@ class MaskPainter(QLabel):
         h, w = self.image.shape[:2]
         self.setFixedSize(w, h)
 
+    def set_image(self, image):
+        if image is None or not isinstance(image, np.ndarray):
+            raise ValueError("Image must be a valid numpy array.")
+        if len(image.shape) != 3 or image.shape[2] != 3:
+            raise ValueError("Image must be a 3-channel RGB image.")
+
+        self.image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        # Set the QLabel size to the image size
+        h, w = self.image.shape[:2]
+        self.setFixedSize(w, h)
+
+
+    def set_masks(self, masks):
+        self.masks = masks
+
+    def reset_zoom(self):
+        self._zoom = 1.0
+
     def sizeHint(self):
         h, w = self.image.shape[:2]
         return QSize(int(w * self._zoom), int(h * self._zoom))
 
     def set_active_label(self, label_name):
         self.active_label = label_name
-        if label_name not in self.labels:
-            h, w = self.image.shape[:2]
-            self.labels[label_name] = np.zeros((h, w), dtype=np.uint8)
-            hue = (len(self.labels) * 45) % 360
-            self.label_colors[label_name] = QColor.fromHsv(hue, 255, 255, 120)
         self.update_display()
 
     def current_mask(self):
-        return self.labels[self.active_label]
+        current_mask = self.masks.get(self.active_label)
+        if current_mask is None:
+            current_mask = np.zeros(self.image.shape[:2], dtype=np.uint8)
+        return current_mask
 
     def update_display(self):
         h, w = self.image.shape[:2]
@@ -67,19 +88,19 @@ class MaskPainter(QLabel):
         pixmap = QPixmap.fromImage(base_img)
 
         # Overlay mask if active_label exists
-        if self.active_label:
-            mask = self.current_mask()
-            color = self.label_colors[self.active_label]
-            r, g, b, a = color.red(), color.green(), color.blue(), color.alpha()
+        mask = self.current_mask()
 
-            # Create overlay image (RGBA)
-            overlay = np.zeros((h, w, 4), dtype=np.uint8)
-            overlay[mask > 0] = [r, g, b, a]
+        color = self.label_colors[self.active_label]
+        r, g, b, a = color.red(), color.green(), color.blue(), color.alpha()
 
-            overlay_img = QImage(overlay.data, w, h, overlay.strides[0], QImage.Format_RGBA8888)
-            painter = QPainter(pixmap)
-            painter.drawImage(0, 0, overlay_img)
-            painter.end()
+        # Create overlay image (RGBA)
+        overlay = np.zeros((h, w, 4), dtype=np.uint8)
+        overlay[mask > 0] = [r, g, b, a]
+
+        overlay_img = QImage(overlay.data, w, h, overlay.strides[0], QImage.Format_RGBA8888)
+        painter = QPainter(pixmap)
+        painter.drawImage(0, 0, overlay_img)
+        painter.end()
 
         # Scale pixmap according to zoom
         scaled_pixmap = pixmap.scaled(int(w * self._zoom), int(h * self._zoom), Qt.KeepAspectRatio)
@@ -87,6 +108,8 @@ class MaskPainter(QLabel):
         self.setPixmap(scaled_pixmap)
         # IMPORTANT: keep QLabel fixed size to scaled pixmap size
         self.setFixedSize(scaled_pixmap.size())
+
+
     def widget_to_image(self, pos):
         """Convert widget coordinates to image pixel coordinates."""
         x = int(pos.x() / self._zoom)
@@ -119,11 +142,14 @@ class MaskPainter(QLabel):
             size = self.pen_size if self.mode == 'draw' else self.eraser_size
             val = 255 if self.mode == 'draw' else 0
 
-            cv2.line(self.current_mask(),
+            current_mask = cv2.line(self.current_mask(),
                      (self.last_point.x(), self.last_point.y()),
                      (img_pt.x(), img_pt.y()),
                      color=val,
                      thickness=size)
+            
+            self.masks.set(mask=current_mask, label=self.active_label)
+
 
             self.last_point = img_pt
             self.update_display()
@@ -174,14 +200,14 @@ class MaskPainter(QLabel):
         if self.history:
             self.redo_stack.append(self.current_mask().copy())
             last_mask = self.history.pop()
-            self.labels[self.active_label] = last_mask
+            self.masks.set(mask=last_mask, label=self.active_label)
             self.update_display()
 
     def redo(self):
         if self.redo_stack:
             self.history.append(self.current_mask().copy())
             next_mask = self.redo_stack.pop()
-            self.labels[self.active_label] = next_mask
+            self.masks.set(mask=next_mask, label=self.active_label)
             self.update_display()
 
     def set_mode(self, mode):
