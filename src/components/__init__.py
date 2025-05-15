@@ -1,0 +1,1 @@
+from src.components.mask_drawing import MaskPainter
