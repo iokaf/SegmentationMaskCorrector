@@ -41,6 +41,11 @@ class MaskPainter(QLabel):
 
         self.setMouseTracking(True)
 
+        self.cursor_pos = QPoint(0, 0)
+        self.show_cursor_circle = True
+        self.cursor_color_draw = QColor(255, 0, 0, 180)
+        self.cursor_color_erase = QColor(0, 0, 255, 180)
+
         self.update_display()
 
         # Fix size policy and size to image size initially
@@ -124,58 +129,25 @@ class MaskPainter(QLabel):
         # Scale pixmap according to zoom
         scaled_pixmap = pixmap.scaled(int(w * self._zoom), int(h * self._zoom), Qt.KeepAspectRatio)
 
+        # Draw brush/eraser preview circle
+        painter = QPainter(scaled_pixmap)
+        if self.show_cursor_circle:
+            # brush size is thickness (diameter), so radius = size/2
+            radius = int((self.pen_size if self.mode == 'draw' else self.eraser_size) * self._zoom / 2)
+            if radius < 1:
+                radius = 1  # ensure visible minimum radius
+
+            color = self.cursor_color_draw if self.mode == 'draw' else self.cursor_color_erase
+
+            painter.setRenderHint(QPainter.Antialiasing)
+            painter.setBrush(color)
+            painter.setPen(Qt.NoPen)
+            painter.drawEllipse(self.cursor_pos, radius, radius)
+        painter.end()
+
         self.setPixmap(scaled_pixmap)
         # IMPORTANT: keep QLabel fixed size to scaled pixmap size
         self.setFixedSize(scaled_pixmap.size())
-
-
-
-
-
-    def ___update_display(self):
-        if self.image is None:
-            return
-
-        h, w = self.image.shape[:2]
-
-        # Convert base image to QImage
-        if len(self.image.shape) == 2:
-            qimage = QImage(self.image.data, w, h, w, QImage.Format_Grayscale8)
-        else:
-            qimage = QImage(self.image.data, w, h, w * 3, QImage.Format_RGB888)
-
-        # Create an overlay (RGBA)
-        overlay = np.zeros((h, w, 4), dtype=np.uint8)
-
-        if self.mask_view_mode == "Current":
-            mask = self.current_mask()
-            if mask is not None:
-                color = self.label_colors[self.active_label]
-                r, g, b, a = color.red(), color.green(), color.blue(), color.alpha()
-                overlay[mask > 0] = [r, g, b, a]
-
-        elif self.mask_view_mode == "All":
-            for label, color in self.label_colors.items():
-                mask = self.masks.get(label)
-                if mask is not None:
-                    r, g, b, a = color.red(), color.green(), color.blue(), color.alpha()
-                    overlay[mask > 0] = [r, g, b, a]
-
-        # Convert overlay to QImage
-        overlay_image = QImage(overlay.data, w, h, w * 4, QImage.Format_RGBA8888)
-
-        # Create pixmap by compositing overlay over the base image
-        base_pixmap = QPixmap.fromImage(qimage)
-        painter = QPainter(base_pixmap)
-        painter.drawImage(0, 0, overlay_image)
-        painter.end()
-
-        # Save the original (unscaled) pixmap for future zooming
-        self.original_pixmap = base_pixmap
-
-        scaled_pixmap = base_pixmap.scaled(int(w * self._zoom), int(h * self._zoom), Qt.KeepAspectRatio)
-
-        self.setPixmap(scaled_pixmap)
 
 
     def widget_to_image(self, pos):
@@ -202,6 +174,7 @@ class MaskPainter(QLabel):
             self.redo_stack.clear()
 
     def mouseMoveEvent(self, event):
+        self.cursor_pos = event.position().toPoint()
         if self.drawing and self.active_label:
             img_pt = self.widget_to_image(event.position())
             if img_pt is None:
@@ -210,17 +183,18 @@ class MaskPainter(QLabel):
             size = self.pen_size if self.mode == 'draw' else self.eraser_size
             val = 255 if self.mode == 'draw' else 0
 
-            current_mask = cv2.line(self.current_mask(),
-                     (self.last_point.x(), self.last_point.y()),
-                     (img_pt.x(), img_pt.y()),
-                     color=val,
-                     thickness=size)
-            
+            current_mask = cv2.line(
+                self.current_mask(),
+                (self.last_point.x(), self.last_point.y()),
+                (img_pt.x(), img_pt.y()),
+                color=val,
+                thickness=size
+            )
+
             self.masks.set(mask=current_mask, label=self.active_label)
-
-
             self.last_point = img_pt
-            self.update_display()
+
+        self.update_display()
 
     def mouseReleaseEvent(self, event):
         if event.button() == Qt.LeftButton:
