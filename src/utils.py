@@ -102,6 +102,15 @@ class DataLoader:
         
         return frame
     
+    def delete_mask(self, frame_number: int, label: str):
+        if frame_number < 0 or frame_number >= self.frame_count:
+            raise ValueError(f"Frame number {frame_number} is out of range.")
+        
+        mask = self.masks.get(frame_number, FrameMasks())
+        mask.set(mask=None, label=label)
+        self.masks[frame_number] = mask
+
+
     def get_masks(self, frame_number: int):
         if frame_number < 0 or frame_number >= self.frame_count:
             raise ValueError(f"Frame number {frame_number} is out of range.")

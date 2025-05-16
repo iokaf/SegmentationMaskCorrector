@@ -80,18 +80,18 @@ class MainWindow(QWidget):
         self.canvas.set_mask_visibility(True)
         self.canvas.set_mask_view_mode("All")
 
-
-
         self.draw_btn = QPushButton("Draw")
         self.erase_btn = QPushButton("Erase")
         self.undo_btn = QPushButton("Undo")
         self.redo_btn = QPushButton("Redo")
+        self.delete_btn = QPushButton("Delete Mask")
         self.save_btn = QPushButton("Save Masks")
 
         self.draw_btn.clicked.connect(lambda: self.canvas.set_mode('draw'))
         self.erase_btn.clicked.connect(lambda: self.canvas.set_mode('erase'))
         self.undo_btn.clicked.connect(self.canvas.undo)
         self.redo_btn.clicked.connect(self.canvas.redo)
+        self.delete_btn.clicked.connect(self.delete_current_mask)
         self.save_btn.clicked.connect(self.save_masks)
 
         # Set a shortcut for the draw button
@@ -99,6 +99,7 @@ class MainWindow(QWidget):
         self.erase_btn.setShortcut("E")
         self.undo_btn.setShortcut("Ctrl+Z")
         self.redo_btn.setShortcut("Ctrl+Y")
+        self.delete_btn.setShortcut("Ctrl+D")
 
         self.brush_slider = QSlider(Qt.Horizontal)
         self.brush_slider.setRange(1, 50)
@@ -116,6 +117,7 @@ class MainWindow(QWidget):
         controls_layout.addWidget(self.erase_btn)
         controls_layout.addWidget(self.undo_btn)
         controls_layout.addWidget(self.redo_btn)
+        controls_layout.addWidget(self.delete_btn)
         controls_layout.addWidget(self.save_btn)
 
         main_layout = QVBoxLayout(self)
@@ -125,6 +127,18 @@ class MainWindow(QWidget):
         main_layout.addLayout(controls_layout)
 
         self.resize(1200, 900)
+
+##########################################
+    def delete_current_mask(self):
+        current_frame = self.frame_slider.value()
+        if current_frame in self.data_loader.masks:
+            self.data_loader.delete_mask(current_frame, self.canvas.active_label)
+            self.canvas.set_masks(self.data_loader.get_masks(current_frame))
+            self.canvas.update_display()
+        else:
+            QMessageBox.warning(self, "Warning", "No mask to delete for the current frame.")
+##########################################
+
 
     def cycle_label_selector(self):
         current_index = self.label_selector.currentIndex()
