@@ -58,10 +58,24 @@ class MainWindow(QWidget):
         self.redo_btn.clicked.connect(self.canvas.redo)
         self.save_btn.clicked.connect(self.save_masks)
 
+        # Set a shortcut for the draw button
+        self.draw_btn.setShortcut("B")
+        self.erase_btn.setShortcut("E")
+        self.undo_btn.setShortcut("Ctrl+Z")
+        self.redo_btn.setShortcut("Ctrl+Y")
+
+        self.brush_slider = QSlider(Qt.Horizontal)
+        self.brush_slider.setRange(1, 50)
+        self.brush_slider.setValue(5)  # default size
+        self.brush_slider.valueChanged.connect(self.change_brush_size)
+
+
         controls_layout = QHBoxLayout()
         controls_layout.addWidget(QLabel("Select Label:"))
         controls_layout.addWidget(self.label_selector)
         controls_layout.addWidget(self.mask_view_selector)
+        controls_layout.addWidget(QLabel("Brush Size:"))
+        controls_layout.addWidget(self.brush_slider)
         controls_layout.addWidget(self.draw_btn)
         controls_layout.addWidget(self.erase_btn)
         controls_layout.addWidget(self.undo_btn)
@@ -75,6 +89,11 @@ class MainWindow(QWidget):
         main_layout.addLayout(controls_layout)
 
         self.resize(1200, 900)
+
+
+    def change_brush_size(self, value):
+        self.canvas.set_pen_size(value)
+        self.canvas.set_eraser_size(value)
 
     def load_video(self):
         video_dir = QFileDialog.getExistingDirectory(self, "Select Video Directory")
