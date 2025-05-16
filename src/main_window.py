@@ -10,6 +10,7 @@ from PySide6.QtCore import Qt
 from src.components import MaskPainter
 from src.utils import DataLoader
 
+from PySide6.QtGui import QKeySequence, QShortcut
 
 class MainWindow(QWidget):
     def __init__(self, image_path):
@@ -29,6 +30,15 @@ class MainWindow(QWidget):
         self.frame_slider.setPageStep(1)
         self.frame_slider.valueChanged.connect(self.load_frame)
 
+        # Shortcut to go to previous frame
+        self.shortcut_prev_frame = QShortcut(QKeySequence("N"), self)
+        self.shortcut_prev_frame.activated.connect(self.decrease_frame)
+
+        # Shortcut to go to next frame
+        self.shortcut_next_frame = QShortcut(QKeySequence("M"), self)
+        self.shortcut_next_frame.activated.connect(self.increase_frame)
+
+
         self.canvas = MaskPainter()
         self.scroll_area = QScrollArea()
         self.scroll_area.setWidgetResizable(True)
@@ -40,10 +50,36 @@ class MainWindow(QWidget):
         self.label_selector.currentTextChanged.connect(self.change_label)
         self.canvas.set_active_label(default_labels[0])
 
-        self.mask_view_selector = QComboBox()
-        self.mask_view_selector.addItems(["All", "Current", "None"])
-        self.mask_view_selector.currentTextChanged.connect(self.change_mask_view)
-        self.canvas.set_mask_view_mode("All")  # Default
+        self.shortcut_cycle_label = QShortcut(QKeySequence("X"), self)
+        self.shortcut_cycle_label.activated.connect(self.cycle_label_selector)
+
+                # === View Mode Selector ===
+        self.view_selector = QComboBox()
+        self.view_selector.addItems(["All Masks", "Current Mask"])
+        self.view_selector.currentTextChanged.connect(self.change_view_mode)
+
+        # === Mask Visibility Toggle ===
+        self.show_mask_selector = QComboBox()
+        self.show_mask_selector.addItems(["Yes", "No"])
+        self.show_mask_selector.currentTextChanged.connect(self.toggle_mask_visibility)
+
+        self.view_layout = QHBoxLayout()
+        self.view_layout.addWidget(QLabel("View:"))
+        self.view_layout.addWidget(self.view_selector)
+        self.view_layout.addWidget(QLabel("Show Mask:"))
+        self.view_layout.addWidget(self.show_mask_selector)
+
+        # === Shortcuts ===
+        self.toggle_view_shortcut = QShortcut(QKeySequence("C"), self)
+        self.toggle_view_shortcut.activated.connect(self.cycle_view_selector)
+
+        self.toggle_visibility_shortcut = QShortcut(QKeySequence("V"), self)
+        self.toggle_visibility_shortcut.activated.connect(self.cycle_visibility_selector)
+
+        # Default settings
+        self.canvas.set_mask_visibility(True)
+        self.canvas.set_mask_view_mode("All")
+
 
 
         self.draw_btn = QPushButton("Draw")
@@ -73,7 +109,7 @@ class MainWindow(QWidget):
         controls_layout = QHBoxLayout()
         controls_layout.addWidget(QLabel("Select Label:"))
         controls_layout.addWidget(self.label_selector)
-        controls_layout.addWidget(self.mask_view_selector)
+        controls_layout.addLayout(self.view_layout)
         controls_layout.addWidget(QLabel("Brush Size:"))
         controls_layout.addWidget(self.brush_slider)
         controls_layout.addWidget(self.draw_btn)
@@ -90,6 +126,40 @@ class MainWindow(QWidget):
 
         self.resize(1200, 900)
 
+    def cycle_label_selector(self):
+        current_index = self.label_selector.currentIndex()
+        total_items = self.label_selector.count()
+        new_index = (current_index + 1) % total_items
+        self.label_selector.setCurrentIndex(new_index)
+
+    def decrease_frame(self):
+        current_value = self.frame_slider.value()
+        if current_value > self.frame_slider.minimum():
+            self.frame_slider.setValue(current_value - 1)
+
+    def increase_frame(self):
+        current_value = self.frame_slider.value()
+        if current_value < self.frame_slider.maximum():
+            self.frame_slider.setValue(current_value + 1)
+
+    def change_view_mode(self, mode_text):
+        if mode_text == "All Masks":
+            self.canvas.set_mask_view_mode("All")
+        elif mode_text == "Current Mask":
+            self.canvas.set_mask_view_mode("Current")
+
+    def toggle_mask_visibility(self, show_text):
+        self.canvas.set_mask_visibility(show_text == "Yes")
+
+    def cycle_view_selector(self):
+        current_index = self.view_selector.currentIndex()
+        next_index = (current_index + 1) % self.view_selector.count()
+        self.view_selector.setCurrentIndex(next_index)
+
+    def cycle_visibility_selector(self):
+        current_index = self.show_mask_selector.currentIndex()
+        next_index = (current_index + 1) % self.show_mask_selector.count()
+        self.show_mask_selector.setCurrentIndex(next_index)
 
     def change_brush_size(self, value):
         self.canvas.set_pen_size(value)

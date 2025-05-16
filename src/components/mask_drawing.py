@@ -23,6 +23,8 @@ class MaskPainter(QLabel):
         }
 
         self.active_label = "Polyp"
+        
+        self.show_masks = True  # default to visible
         self.mask_view_mode = "All"
 
         self.pen_size = 5
@@ -52,8 +54,12 @@ class MaskPainter(QLabel):
         h, w = self.image.shape[:2]
         self.setFixedSize(w, h)
 
+    def set_mask_visibility(self, visible: bool):
+        self.show_masks = visible
+        self.update_display()
+
     def set_mask_view_mode(self, mode):
-        if mode in ("All", "Current", "None"):
+        if mode in ("All", "Current"):
             self.mask_view_mode = mode
             self.update_display()
 
@@ -107,19 +113,19 @@ class MaskPainter(QLabel):
         # Create an overlay (RGBA)
         overlay = np.zeros((h, w, 4), dtype=np.uint8)
 
-        if self.mask_view_mode == "Current":
-            mask = self.current_mask()
-            if mask is not None:
-                color = self.label_colors[self.active_label]
-                r, g, b, a = color.red(), color.green(), color.blue(), color.alpha()
-                overlay[mask > 0] = [r, g, b, a]
-
-        elif self.mask_view_mode == "All":
-            for label, color in self.label_colors.items():
-                mask = self.masks.get(label)
+        if self.show_masks:
+            if self.mask_view_mode == "Current":
+                mask = self.current_mask()
                 if mask is not None:
+                    color = self.label_colors[self.active_label]
                     r, g, b, a = color.red(), color.green(), color.blue(), color.alpha()
                     overlay[mask > 0] = [r, g, b, a]
+            elif self.mask_view_mode == "All":
+                for label, color in self.label_colors.items():
+                    mask = self.masks.get(label)
+                    if mask is not None:
+                        r, g, b, a = color.red(), color.green(), color.blue(), color.alpha()
+                        overlay[mask > 0] = [r, g, b, a]
 
         overlay_img = QImage(overlay.data, w, h, overlay.strides[0], QImage.Format_RGBA8888)
         painter = QPainter(pixmap)
