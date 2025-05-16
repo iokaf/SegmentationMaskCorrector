@@ -40,6 +40,11 @@ class MainWindow(QWidget):
         self.label_selector.currentTextChanged.connect(self.change_label)
         self.canvas.set_active_label(default_labels[0])
 
+        self.mask_view_selector = QComboBox()
+        self.mask_view_selector.addItems(["All", "Current", "None"])
+        self.mask_view_selector.currentTextChanged.connect(self.change_mask_view)
+        self.canvas.set_mask_view_mode("All")  # Default
+
 
         self.draw_btn = QPushButton("Draw")
         self.erase_btn = QPushButton("Erase")
@@ -56,6 +61,7 @@ class MainWindow(QWidget):
         controls_layout = QHBoxLayout()
         controls_layout.addWidget(QLabel("Select Label:"))
         controls_layout.addWidget(self.label_selector)
+        controls_layout.addWidget(self.mask_view_selector)
         controls_layout.addWidget(self.draw_btn)
         controls_layout.addWidget(self.erase_btn)
         controls_layout.addWidget(self.undo_btn)
@@ -103,6 +109,9 @@ class MainWindow(QWidget):
 
     def change_label(self, label_name):
         self.canvas.set_active_label(label_name)
+
+    def change_mask_view(self, mode):
+        self.canvas.set_mask_view_mode(mode)
 
     def save_masks(self):
         folder = QFileDialog.getExistingDirectory(self, "Select Folder to Save Masks")
