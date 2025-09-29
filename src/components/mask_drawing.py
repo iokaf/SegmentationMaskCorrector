@@ -5,24 +5,22 @@ from PySide6.QtWidgets import QLabel, QMessageBox
 from PySide6.QtGui import QPixmap, QImage, QPainter, QColor
 from PySide6.QtCore import Qt, QPoint, QSize
 
-from src.utils import FrameMasks
+from src.utils import ImageMasks
 
 class MaskPainter(QLabel):
-    def __init__(self):
+    def __init__(self, labels):
         super().__init__()
 
         # Load the base image in RGB
         self.image = np.zeros((512, 512, 3), dtype=np.uint8)
-        self.masks = FrameMasks()
+        self.masks = ImageMasks(labels=labels)
 
         self.labels = {}
         self.label_colors = {
-            "Polyp": QColor(255, 0, 0, 120),
-            "Shaft": QColor(0, 255, 0, 120),
-            "Wire": QColor(0, 0, 255, 120)
+            label: QColor.fromHsv((i * 45) % 360, 255, 255, 120) for i, label in enumerate(labels)
         }
 
-        self.active_label = "Polyp"
+        self.active_label = labels[0]
         
         self.show_masks = True  # default to visible
         self.mask_view_mode = "All"
@@ -37,7 +35,7 @@ class MaskPainter(QLabel):
         self.history = []
         self.redo_stack = []
 
-        self._zoom = 1.0
+        self._zoom = 0.75
         self._zoom_min = 0.2
         self._zoom_max = 5.0
 
@@ -79,7 +77,7 @@ class MaskPainter(QLabel):
         self.masks = masks
 
     def reset_zoom(self):
-        self._zoom = 1.0
+        self._zoom = 0.75
 
     def sizeHint(self):
         h, w = self.image.shape[:2]

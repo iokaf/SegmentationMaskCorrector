@@ -1,0 +1,4 @@
+application: Image # Options: Image, Video
+
+labels: 
+  - polyp

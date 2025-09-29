@@ -2,53 +2,112 @@ from collections import defaultdict
 from pathlib import Path
 
 # Import dataclasses
-from dataclasses import dataclass
 
 import cv2
 
+from dataclasses import dataclass, field
+from typing import Dict, List, Any
+
+import pandas as pd
 
 @dataclass
-class FrameMasks:
-    frame_number: int = None
-    polyp: str = None
-    shaft: str = None
-    wire: str = None
+class ImageMasks:
+    labels: List[str]
+    image_index: int = None
+    masks: Dict[str, Any] = field(init=False)
 
-    def set_fnum(self, frame_number):
-        self.frame_number = frame_number
+    def __post_init__(self):
+        if not self.labels:
+            raise ValueError("labels list must be non-empty")
+        # Initialize all labels with None
+        self.masks = {label: None for label in self.labels}
 
-    def set(self, mask, label):
-        
-        if label == "Polyp":
-            self.polyp = mask
-        elif label == "Shaft":
-            self.shaft = mask
-        elif label == "Wire":
-            self.wire = mask
-        else:
-            raise ValueError(f"Unknown label: {label}")
-    
-    def get(self, key):
-        return {
-            "Polyp": self.polyp,
-            "Shaft": self.shaft,
-            "Wire": self.wire
-        }.get(key, None)
+    def set_index(self, image_index: int):
+        self.image_index = image_index
 
-    def get_fnum(self): 
-        return self.frame_number
-    
-    def get_polyp(self):
-        return self.polyp
-    
-    def get_shaft(self):
-        return self.shaft
-    
-    def get_wire(self):
-        return self.wire
-    
+    def set(self, mask: Any, label: str):
+        if label not in self.masks:
+            return
+        self.masks[label] = mask
+
+    def get(self, label: str):
+        return self.masks.get(label, None)
+
+    def get_index(self):
+        return self.image_index
+
+    def get_all(self) -> Dict[str, Any]:
+        """Returns all label-mask pairs."""
+        return self.masks
+
 
 class DataLoader:
+    def __init__(self, labels: list):
+        assert len(labels) > 0, "Labels list cannot be empty."
+
+        self.masks = defaultdict(lambda: ImageMasks(labels=labels))
+        self.labels = labels
+        self.max_index = None
+        self.output_dir_name = None
+
+    def set_output_dir_name(self, dir_name: str):
+        self.output_dir_name = dir_name
+
+    def get_output_dir_name(self):
+        return self.output_dir_name
+
+    # Define the load_data and get_datapoint methods to be overridden by subclasses
+    def set_max_index(self, max_index: int):
+        if max_index <= 0:
+            raise ValueError("max_index must be a positive integer.")
+        self.max_index = max_index
+
+    def get_max_index(self):
+        return self.max_index
+    
+    def load_data(self):
+        raise NotImplementedError("Subclasses should implement this method.")
+    
+    def get_datapoint(self, index: int):
+        raise NotImplementedError("Subclasses should implement this method.")
+
+
+    def delete_mask(self, index: int, label: str):
+        if index < 0 or index >= self.max_index:
+            raise ValueError(f"Index {index} is out of range.")
+
+        mask = self.masks.get(index, ImageMasks(labels=self.labels))
+        mask.set(mask=None, label=label)
+        self.masks[index] = mask
+
+
+    def get_masks(self, index: int):
+        if index < 0 or index >= self.max_index:
+            raise ValueError(f"Index {index} is out of range.")
+
+        mask = self.masks.get(index, ImageMasks(labels=self.labels))
+        return mask
+
+    def set_frame_masks(self, index: int, mask: ImageMasks):
+        if index < 0 or index >= self.max_index:
+            raise ValueError(f"Index {index} is out of range.")
+
+        self.masks[index] = mask
+
+    def save_all_masks(self, folder: str):
+        if not Path(folder).exists():
+            raise ValueError(f"Directory {folder} does not exist.")
+        if not Path(folder).is_dir():
+            raise ValueError(f"{folder} is not a directory.")
+        for index, mask in self.masks.items():
+            for label in self.labels:
+                mask_img = mask.get(label)
+                if mask_img is not None:
+                    filename = f"{index:07d}__{label}.png"
+                    cv2.imwrite(str(Path(folder) / filename), mask_img)
+
+
+class VideoDataLoader(DataLoader):
     def __init__(self, video_dir: str, labels: list):
         assert Path(video_dir).exists(), f"Directory {video_dir} does not exist."
         assert Path(video_dir).is_dir(), f"{video_dir} is not a directory."
@@ -58,8 +117,8 @@ class DataLoader:
 
         self.video_path = None
         self.video = None
-        self.frame_count = None
-        self.masks = defaultdict(lambda: FrameMasks())
+        self.max_index = None
+        self.masks = defaultdict(lambda: ImageMasks(labels=labels))
         self.data = self.load_data()
         self.labels = labels
 
@@ -67,12 +126,14 @@ class DataLoader:
         video_name = self.video_dir.stem
         self.video_path = self.video_dir / f"{video_name}.mp4"
 
+        self.set_output_dir_name(video_name)
+
         self.video = cv2.VideoCapture(str(self.video_path))
         if not self.video.isOpened():
             raise ValueError(f"Could not open video file: {self.video_path}")
         
         # Get the number of frames in the video
-        self.frame_count = int(self.video.get(cv2.CAP_PROP_FRAME_COUNT))
+        self.set_max_index(int(self.video.get(cv2.CAP_PROP_FRAME_COUNT)))
 
         masks_dir = self.video_dir / video_name / "masks"
         masks = masks_dir.glob("*.png")
@@ -90,9 +151,8 @@ class DataLoader:
                 label=label
                 )
 
-
-    def get_frame(self, frame_number: int):
-        if frame_number < 0 or frame_number >= self.frame_count:
+    def get_datapoint(self, frame_number: int):
+        if frame_number < 0 or frame_number >= self.max_index:
             raise ValueError(f"Frame number {frame_number} is out of range.")
         
         self.video.set(cv2.CAP_PROP_POS_FRAMES, frame_number)
@@ -102,37 +162,54 @@ class DataLoader:
         
         return frame
     
-    def delete_mask(self, frame_number: int, label: str):
-        if frame_number < 0 or frame_number >= self.frame_count:
-            raise ValueError(f"Frame number {frame_number} is out of range.")
-        
-        mask = self.masks.get(frame_number, FrameMasks())
-        mask.set(mask=None, label=label)
-        self.masks[frame_number] = mask
+
+class ImageDataLoader(DataLoader):
+    def __init__(self, annotations_file: str, labels: list):
+        assert Path(annotations_file).exists(), f"File {annotations_file} does not exist."
+        assert Path(annotations_file).is_file(), f"{annotations_file} is not a file."
+        assert len(labels) > 0, "Labels list cannot be empty."
+
+        self.annotations_file = Path(annotations_file)
+        self.labels = labels
+        self.masks = defaultdict(lambda: ImageMasks(labels=labels))
 
 
-    def get_masks(self, frame_number: int):
-        if frame_number < 0 or frame_number >= self.frame_count:
-            raise ValueError(f"Frame number {frame_number} is out of range.")
-        
-        mask = self.masks.get(frame_number, FrameMasks())
-        return mask
-    
-    def set_frame_masks(self, frame_number: int, mask: FrameMasks):
-        if frame_number < 0 or frame_number >= self.frame_count:
-            raise ValueError(f"Frame number {frame_number} is out of range.")
-        
-        self.masks[frame_number] = mask
+        self.data = self.load_data()
+        self.max_index = len(self.data)
 
+    def load_data(self):
 
-    def save_all_masks(self, folder: str):
-        if not Path(folder).exists():
-            raise ValueError(f"Directory {folder} does not exist.")
+        self.set_output_dir_name(self.annotations_file.stem)
         
-        for frame_number, mask in self.masks.items():
+        df = pd.read_csv(self.annotations_file)
+
+        for idx, row in df.iterrows():
             for label in self.labels:
-                mask_img = mask.get(label)
-                if mask_img is not None:
-                    print(frame_number, label)
-                    filename = f"{frame_number:07d}__{label}.png"
-                    cv2.imwrite(str(Path(folder) / filename), mask_img)
+                if not label in row or pd.isna(row[label]):
+                    continue
+
+                mask_path = row[label]
+                mask = cv2.imread(mask_path, cv2.IMREAD_GRAYSCALE)
+                mask = cv2.threshold(mask, 127, 255, cv2.THRESH_BINARY)[1]
+                self.masks[idx].set(
+                    mask=mask, 
+                    label=label
+                        )
+                
+        return df
+
+    def get_datapoint(self, index: int):
+        if index < 0 or index >= self.max_index:
+            raise ValueError(f"Index {index} is out of range.")
+
+        row = self.data.iloc[index]
+        image_path = row['image']
+        if not Path(image_path).exists():
+            raise ValueError(f"Image file {image_path} does not exist.")
+        if not Path(image_path).is_file():
+            raise ValueError(f"{image_path} is not a file.")
+        image = cv2.imread(image_path)
+        if image is None:
+            raise ValueError(f"Could not read image file {image_path}.")
+
+        return image

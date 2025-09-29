@@ -1,8 +1,13 @@
-from src.main_window import MainWindow
-from PyQt6.QtWidgets import QApplication
 import sys
+import yaml
+
+from PyQt6.QtWidgets import QApplication
+
+from src.main_window import MainWindow
+
+config = yaml.safe_load(open("config.yaml"))
 
 app = QApplication(sys.argv)
-window = MainWindow("/home/yanny/Pictures/Screenshots/Screenshot from 2025-04-01 13-19-31.png")
+window = MainWindow(config)
 window.show()
 sys.exit(app.exec())
