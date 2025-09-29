@@ -14,6 +14,7 @@ import pandas as pd
 class ImageMasks:
     labels: List[str]
     image_index: int = None
+    save_name: Any = None
     masks: Dict[str, Any] = field(init=False)
 
     def __post_init__(self):
@@ -39,6 +40,12 @@ class ImageMasks:
     def get_all(self) -> Dict[str, Any]:
         """Returns all label-mask pairs."""
         return self.masks
+
+    def set_save_name(self, save_name: str):
+        self.save_name = save_name
+
+    def get_save_name(self):
+        return self.save_name
 
 
 class DataLoader:
@@ -103,7 +110,7 @@ class DataLoader:
             for label in self.labels:
                 mask_img = mask.get(label)
                 if mask_img is not None:
-                    filename = f"{index:07d}__{label}.png"
+                    filename = f"{mask.get_save_name()}__{label}.png"
                     cv2.imwrite(str(Path(folder) / filename), mask_img)
 
 
@@ -150,6 +157,9 @@ class VideoDataLoader(DataLoader):
                 mask=mask, 
                 label=label
                 )
+            
+            self.masks[fnum].set_index(fnum)
+            self.masks[fnum].set_save_name(f"{fnum:07d}")
 
     def get_datapoint(self, frame_number: int):
         if frame_number < 0 or frame_number >= self.max_index:
@@ -184,6 +194,8 @@ class ImageDataLoader(DataLoader):
         df = pd.read_csv(self.annotations_file)
 
         for idx, row in df.iterrows():
+            image_path = row['image']
+            image_name = Path(image_path).stem
             for label in self.labels:
                 if not label in row or pd.isna(row[label]):
                     continue
@@ -195,6 +207,9 @@ class ImageDataLoader(DataLoader):
                     mask=mask, 
                     label=label
                         )
+                
+            self.masks[idx].set_index(idx)
+            self.masks[idx].set_save_name(image_name)
                 
         return df
 
